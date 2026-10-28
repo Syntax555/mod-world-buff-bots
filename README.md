@@ -1,3 +1,22 @@
+## Portable assembly integration
+
+This **World Buff Bots** fork is maintained for
+[AzerothCore Playerbots Portable](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md). Its original upstream is
+[Rockhopper1776/mod-world-buff-bots](https://github.com/Rockhopper1776/mod-world-buff-bots), imported at
+[`baae5656aa6a`](https://github.com/Rockhopper1776/mod-world-buff-bots/commit/baae5656aa6a375e103bc83da8262f2061dbfcb6).
+The assembly pins a tested commit of this fork's `main` branch in
+[`versions.lock.json`](https://github.com/Syntax555/mod-playerbots-portable/blob/main/versions.lock.json), together with its matching core and modules.
+
+Use the assembly's [installation and build instructions](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md),
+[module catalog](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/module-versions.md#server-modules) and
+[World buffs](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/world-buffs.md). Before contributing, read its
+[repository rules](https://github.com/Syntax555/mod-playerbots-portable/blob/main/AGENTS.md) and [fork workflow](https://github.com/Syntax555/mod-playerbots-portable/blob/main/CONTRIBUTING.md#changing-the-server).
+The **Portable integration** workflow checks this fork's current commit against
+the assembly's pinned dependencies with the relevant production fixtures.
+
+---
+
+
 # World Buff Simulator (`mod-world-buff-bots`)
 
 Created by Rockhopper1776

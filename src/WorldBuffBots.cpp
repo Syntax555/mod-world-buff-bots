@@ -1,10 +1,11 @@
 /*
- * Simulates classic world buff turn-ins by choosing a faction-appropriate
- * character name, announcing the event, and applying the actual world buffs.
+ * Simulates recurring Vanilla world-buff events for each eligible character.
+ * Applies native auras without granting quest, item or progression rewards.
  */
 
 #include "AreaDefines.h"
 #include "Config.h"
+#include "IndividualProgression.h"
 #include "Log.h"
 #include "Player.h"
 #include "Random.h"
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -23,6 +25,9 @@ constexpr uint32 SPELL_WARCHIEFS_BLESSING = 16609;
 constexpr uint32 SPELL_RALLYING_CRY_OF_THE_DRAGONSLAYER = 22888;
 constexpr uint32 SPELL_SPIRIT_OF_ZANDALAR = 24425;
 constexpr uint32 MS_PER_MINUTE = 60 * IN_MILLISECONDS;
+constexpr uint32 MAX_TIMER_MINUTES = std::numeric_limits<uint32>::max() / MS_PER_MINUTE;
+constexpr uint32 MAX_VANILLA_BUFF_LEVEL = 63;
+constexpr uint32 FACTION_ORGRIMMAR = 76;
 
 enum class AnnouncerNamePool
 {
@@ -70,14 +75,32 @@ bool IsInAreaOrZone(Player const* player, uint32 areaId)
     return player && (player->GetAreaId() == areaId || player->GetZoneId() == areaId);
 }
 
-bool IsEligibleTarget(Player const* player)
+bool IsEligibleTarget(Player* player, uint32 spellId)
 {
-    return player && player->IsInWorld() && player->IsAlive() && !player->IsGameMaster();
+    if (!player || !player->IsInWorld() || !player->IsAlive() || player->IsGameMaster() ||
+        player->GetLevel() > MAX_VANILLA_BUFF_LEVEL || !sIndividualProgression->IsStrictDefaultProgression())
+        return false;
+
+    // The recipient's rewarded milestones define the era, independently of
+    // level, account unlocks, group leaders and the server's client expansion.
+    if (IndividualProgression_GetEarnedEra(player) != 0)
+        return false;
+
+    // Hakkar's buff waits for the stage at which Individual Progression opens
+    // Zul'Gurub to this character.
+    if (spellId == SPELL_SPIRIT_OF_ZANDALAR &&
+        sIndividualProgression->GetPlayerProgressionFromQuests(player) < sIndividualProgression->RequiredZulGurubProgression)
+        return false;
+
+    // AddAura does not run the spell's implicit-target conditions. Preserve
+    // Warchief's native Horde/Friendly gates alongside the native level cap.
+    return spellId != SPELL_WARCHIEFS_BLESSING ||
+           (player->GetTeamId() == TEAM_HORDE && player->GetReputationRank(FACTION_ORGRIMMAR) >= REP_FRIENDLY);
 }
 
 uint32 MinutesToMs(uint32 minutes)
 {
-    return minutes * MS_PER_MINUTE;
+    return std::clamp<uint32>(minutes, 1, MAX_TIMER_MINUTES) * MS_PER_MINUTE;
 }
 
 void ReplaceAll(std::string& text, std::string const& token, std::string const& value)
@@ -107,7 +130,7 @@ public:
                 AnnouncerNamePool::Horde,
                 true,
                 0,
-                "Rend Blackhand has fallen! Thrall has granted Warchief's Blessing in honor of {player}.",
+                "World buff: Warchief's Blessing is available in Orgrimmar.",
                 {},
                 { AREA_ORGRIMMAR }
             },
@@ -118,7 +141,7 @@ public:
                 AnnouncerNamePool::Alliance,
                 true,
                 0,
-                "{player} has returned the head of Onyxia! Rallying Cry of the Dragonslayer echoes through Stormwind.",
+                "World buff: Rallying Cry of the Dragonslayer is available in Stormwind.",
                 {},
                 { AREA_STORMWIND_CITY }
             },
@@ -129,7 +152,7 @@ public:
                 AnnouncerNamePool::Either,
                 true,
                 0,
-                "{player} has returned the Heart of Hakkar! Spirit of Zandalar fills Stranglethorn Vale.",
+                "World buff: Spirit of Zandalar is available in Stranglethorn Vale.",
                 {},
                 { AREA_STRANGLETHORN_VALE }
             }
@@ -155,8 +178,14 @@ public:
 
     void OnUpdate(uint32 diff) override
     {
-        if (!_enabled)
+        if (!_enabled || !diff)
             return;
+
+        if (!sIndividualProgression->IsStrictDefaultProgression())
+        {
+            _delayedCasts.clear();
+            return;
+        }
 
         UpdateDelayedCasts(diff);
 
@@ -209,8 +238,8 @@ private:
 
     uint32 RollInitialDelayMs() const
     {
-        uint32 minMinutes = std::max<uint32>(1, _initialMinMinutes);
-        uint32 maxMinutes = std::max<uint32>(1, _initialMaxMinutes);
+        uint32 minMinutes = std::clamp<uint32>(_initialMinMinutes, 1, MAX_TIMER_MINUTES);
+        uint32 maxMinutes = std::clamp<uint32>(_initialMaxMinutes, 1, MAX_TIMER_MINUTES);
 
         if (maxMinutes < minMinutes)
             std::swap(maxMinutes, minMinutes);
@@ -220,14 +249,18 @@ private:
 
     uint32 RollMainDelayMs() const
     {
-        uint32 minMinutes = _baseMinutes > _varianceMinutes ? _baseMinutes - _varianceMinutes : 1;
-        uint32 maxMinutes = std::max<uint32>(minMinutes, _baseMinutes + _varianceMinutes);
+        uint32 const baseMinutes = std::clamp<uint32>(_baseMinutes, 1, MAX_TIMER_MINUTES);
+        uint32 const varianceMinutes = std::min<uint32>(_varianceMinutes, MAX_TIMER_MINUTES);
+        uint32 const minMinutes = baseMinutes > varianceMinutes ? baseMinutes - varianceMinutes : 1;
+        uint32 const maxMinutes = std::min<uint32>(MAX_TIMER_MINUTES, baseMinutes + varianceMinutes);
         return MinutesToMs(urand(minMinutes, maxMinutes));
     }
 
     void FireEvent(WorldBuffEvent const& event)
     {
-        std::string announcerName = SelectAnnouncerName(event.NamePool);
+        std::string announcerName;
+        if (event.Announcement.find("{player}") != std::string::npos || event.Announcement.find("%s") != std::string::npos)
+            announcerName = SelectAnnouncerName(event.NamePool);
         std::string announcement = FormatAnnouncement(event, announcerName);
 
         sWorldSessionMgr->SendServerMessage(SERVER_MSG_STRING, announcement);
@@ -270,11 +303,14 @@ private:
 
         sWorldSessionMgr->DoForAllOnlinePlayers([&](Player* player)
         {
-            if (!IsEligibleTarget(player) || !IsInAreaOrZone(player, areaId))
+            if (!IsInAreaOrZone(player, areaId) || !IsEligibleTarget(player, spellId))
                 return;
 
-            player->CastSpell(player, spellId, true);
-            ++appliedCount;
+            // A player-cast Dragonslayer selects the whole city again. Apply
+            // only this validated recipient; native AuraScripts, amounts,
+            // durations, immunity and normal aura replacement remain active.
+            if (player->AddAura(spellId, player))
+                ++appliedCount;
         });
 
         return appliedCount;

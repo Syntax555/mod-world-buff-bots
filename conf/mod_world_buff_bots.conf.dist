@@ -2,7 +2,11 @@
 
 #
 # WorldBuffBots.Enable
-#   Enable the module.
+#   Simulate the three Vanilla world events for nearby alive, non-GM players
+#   and bots whose own rewarded Individual Progression milestones are Vanilla.
+#   Requires the active strict default progression chain; custom or disabled
+#   progression fails closed. TBC/Wrath world events retain native behavior.
+#   Native level (at most 63) and Warchief faction/reputation gates apply.
 #   Default: 1
 #
 WorldBuffBots.Enable = 1
@@ -14,10 +18,15 @@ WorldBuffBots.Enable = 1
 #
 WorldBuffBots.Debug = 0
 
+# Custom announcements may use {buff} for the buff name and {player} (or %s)
+# for a display-only announcer name: Horde for Warchief, Alliance for
+# Dragonslayer, either faction for Zandalar. No character or reward is created.
+
 #
 # WorldBuffBots.BaseMinutes / WorldBuffBots.VarianceMinutes
 #   Each buff rerolls its next fire time as BaseMinutes +/- VarianceMinutes.
 #   Default: 90 +/- 60 minutes, meaning 30 to 150 minutes.
+#   Delays are clamped to 1..71582 minutes to keep millisecond timers valid.
 #
 WorldBuffBots.BaseMinutes = 90
 WorldBuffBots.VarianceMinutes = 60
@@ -33,27 +42,31 @@ WorldBuffBots.InitialMaxMinutes = 150
 
 #
 # Warchief's Blessing
-#   Chooses a random Horde-style name for the announcement.
-#   Applies spell 16609 to eligible players in Orgrimmar.
+#   Announces the scheduled world-buff event.
+#   Applies spell 16609 to eligible Horde players in Orgrimmar who are
+#   Friendly or higher with Orgrimmar. Native buff duration: 60 minutes.
 #   IncludeCrossroads also applies the buff to eligible players in the Crossroads
 #   10 seconds later, matching AzerothCore's existing Thrall reward script.
 #
 WorldBuffBots.Warchief.Enable = 1
 WorldBuffBots.Warchief.IncludeCrossroads = 1
-WorldBuffBots.Warchief.Announcement = Rend Blackhand has fallen! Thrall has granted Warchief's Blessing in honor of {player}.
+WorldBuffBots.Warchief.Announcement = World buff: Warchief's Blessing is available in Orgrimmar.
 
 #
 # Rallying Cry of the Dragonslayer
-#   Chooses a random Alliance-style name for the announcement.
-#   Applies spell 22888 to eligible players in Stormwind.
+#   Announces the scheduled world-buff event.
+#   Applies spell 22888 to eligible players in Stormwind. Native duration:
+#   120 minutes; the normal lower-level stat scaling remains active.
 #
 WorldBuffBots.Dragonslayer.Enable = 1
-WorldBuffBots.Dragonslayer.Announcement = {player} has returned the head of Onyxia! Rallying Cry of the Dragonslayer echoes through Stormwind.
+WorldBuffBots.Dragonslayer.Announcement = World buff: Rallying Cry of the Dragonslayer is available in Stormwind.
 
 #
 # Spirit of Zandalar
-#   Chooses a random name from either faction's name pool.
-#   Applies spell 24425 to eligible players in Stranglethorn Vale.
+#   Announces the scheduled world-buff event.
+#   Applies spell 24425 to eligible players in Stranglethorn Vale who have
+#   reached IndividualProgression.RequiredZulGurubProgression (default 3).
+#   Native buff duration: 120 minutes.
 #
 WorldBuffBots.Zandalar.Enable = 1
-WorldBuffBots.Zandalar.Announcement = {player} has returned the Heart of Hakkar! Spirit of Zandalar fills Stranglethorn Vale.
+WorldBuffBots.Zandalar.Announcement = World buff: Spirit of Zandalar is available in Stranglethorn Vale.
